@@ -1,0 +1,75 @@
+name: Build Brow6el AppImage
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  release:
+    types: [ published ]
+  workflow_dispatch:  # Manual triggering
+
+jobs:
+  appimage:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # For release uploads
+
+    steps:
+      - name: Checkout Brow6el source from Codeberg
+        run: |
+          git clone --depth 1 https://codeberg.org/janantos/brow6el.git .
+          git fetch --tags  # Optional: Fetch tags if needed for versioning
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake git pkg-config curl \
+            libsixel-dev \
+            libx11-dev libxcomposite-dev libxdamage-dev libxext-dev libxfixes-dev \
+            libxrandr-dev libgbm-dev libxcb1-dev \
+            libpango1.0-dev libatk1.0-dev libcups2-dev libasound2-dev \
+            libnss3-dev libnspr4-dev libglib2.0-dev \
+            file
+
+      - name: Download CEF binary (x86_64)
+        run: ./download_cef.sh
+
+      - name: Build portable version
+        run: ./build_portable.sh
+
+      - name: Download linuxdeploy (continuous build)
+        run: |
+          wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          chmod +x linuxdeploy-x86_64.AppImage
+
+      - name: Prepare minimal AppDir structure
+        run: |
+          mkdir -p AppDir/usr/bin AppDir/usr/lib
+
+          # Copy executable and wrapper script
+          cp build/brow6el AppDir/usr/bin/
+          cp build/run_brow6el.sh AppDir/usr/bin/
+
+          # Copy the entire portable bundle (CEF binaries, libraries, resources)
+          cp -r build/portable/* AppDir/usr/
+
+          # Create AppRun (symlink to the run script for proper argument passing and environment setup)
+          ln -s usr/bin/run_brow6el.sh AppDir/AppRun
+
+      - name: Bundle dependencies and create AppImage
+        run: |
+          ./linuxdeploy-x86_64.AppImage --appdir AppDir --output appimage
+
+      - name: Upload AppImage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Brow6el-x86_64.AppImage
+          path: Brow6el-*.AppImage
+
+      - name: Upload to GitHub Release (on release event)
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Brow6el-*.AppImage
