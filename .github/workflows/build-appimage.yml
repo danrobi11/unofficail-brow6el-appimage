@@ -40,7 +40,7 @@ jobs:
         run: ./build_portable.sh
 
       - name: Debug - List build directory contents
-        run: ls -R build/
+        run: ls -la build/ && ls -R build/
 
       - name: Download linuxdeploy (continuous build)
         run: |
@@ -49,20 +49,19 @@ jobs:
 
       - name: Prepare minimal AppDir structure
         run: |
-          mkdir -p AppDir/usr/bin AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/scalable/apps
+          mkdir -p AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/scalable/apps
 
-          # Copy the launcher script
-          cp build/run_brow6el.sh AppDir/usr/bin/
+          # Copy entire portable build contents to usr/ (flat structure mirrors original build/)
+          cp -r build/* AppDir/usr/
 
-          # Copy the main executable
-          cp build/brow6el AppDir/usr/bin/ || echo "Warning: brow6el executable not found"
+          # Ensure run_brow6el.sh and brow6el are present in usr/ (launcher expects same dir)
+          if [ ! -f "AppDir/usr/run_brow6el.sh" ] || [ ! -f "AppDir/usr/brow6el" ]; then
+            echo "Error: Required files missing after copy"
+            ls -la AppDir/usr/
+            exit 1
+          fi
 
-          # Copy bundled resources (scripts, locales, and others from debug output)
-          cp -r build/scripts AppDir/usr/
-          cp -r build/locales AppDir/usr/
-          # Extend with additional cp -r commands if more directories appear in debug output
-
-          # Create minimal placeholder icon (scalable SVG for broad compatibility)
+          # Minimal placeholder icon
           cat > AppDir/usr/share/icons/hicolor/scalable/apps/brow6el.svg << 'EOF'
           <svg width="256" height="256" xmlns="http://www.w3.org/2000/svg">
             <rect width="256" height="256" fill="#ffffff"/>
@@ -70,7 +69,7 @@ jobs:
           </svg>
           EOF
 
-          # Create minimal .desktop file (required by appimagetool)
+          # Minimal .desktop file
           cat > AppDir/usr/share/applications/brow6el.desktop << EOF
           [Desktop Entry]
           Name=Brow6el
@@ -82,8 +81,8 @@ jobs:
           Terminal=true
           EOF
 
-          # Create AppRun symlink
-          ln -s usr/bin/run_brow6el.sh AppDir/AppRun
+          # AppRun symlink (points directly to the launcher in usr/)
+          ln -s usr/run_brow6el.sh AppDir/AppRun
 
       - name: Bundle dependencies and create AppImage
         run: |
