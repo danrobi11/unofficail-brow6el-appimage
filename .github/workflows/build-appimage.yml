@@ -40,26 +40,31 @@ jobs:
         run: ./build_portable.sh
 
       - name: Debug - List build directory contents
-        run: ls -la build/ && ls -R build/
+        run: ls -la build/ && find build/ -type f | head -20
 
       - name: Download linuxdeploy (continuous build)
         run: |
           wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
           chmod +x linuxdeploy-x86_64.AppImage
 
-      - name: Prepare minimal AppDir structure
+      - name: Prepare AppDir with native build/ structure
         run: |
-          mkdir -p AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/scalable/apps
+          # Copy entire portable build contents to AppDir root (matches native build/ layout)
+          cp -r build/* AppDir/
 
-          # Copy entire portable build contents to usr/ (flat structure mirrors original build/)
-          cp -r build/* AppDir/usr/
-
-          # Ensure run_brow6el.sh and brow6el are present in usr/ (launcher expects same dir)
-          if [ ! -f "AppDir/usr/run_brow6el.sh" ] || [ ! -f "AppDir/usr/brow6el" ]; then
-            echo "Error: Required files missing after copy"
-            ls -la AppDir/usr/
+          # Verify key files are correctly positioned (as siblings in root)
+          if [ ! -f "AppDir/run_brow6el.sh" ] || [ ! -f "AppDir/brow6el" ] || [ ! -d "AppDir/cef" ] || [ ! -d "AppDir/locales" ]; then
+            echo "Error: Required files/directories missing after copy"
+            ls -la AppDir/
+            find AppDir/ -maxdepth 2
             exit 1
           fi
+
+          # Make launcher executable
+          chmod +x AppDir/run_brow6el.sh AppDir/brow6el
+
+          # Create usr/share structure for .desktop (required by appimagetool)
+          mkdir -p AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/scalable/apps
 
           # Minimal placeholder icon
           cat > AppDir/usr/share/icons/hicolor/scalable/apps/brow6el.svg << 'EOF'
@@ -69,7 +74,7 @@ jobs:
           </svg>
           EOF
 
-          # Minimal .desktop file
+          # Minimal .desktop referencing root launcher
           cat > AppDir/usr/share/applications/brow6el.desktop << EOF
           [Desktop Entry]
           Name=Brow6el
@@ -79,16 +84,21 @@ jobs:
           Type=Application
           Categories=Network;WebBrowser;
           Terminal=true
+          Path=.
           EOF
-
-          # AppRun symlink (points directly to the launcher in usr/)
-          ln -s usr/run_brow6el.sh AppDir/AppRun
 
       - name: Bundle dependencies and create AppImage
         run: |
           ./linuxdeploy-x86_64.AppImage --appdir AppDir --output appimage \
             --desktop-file AppDir/usr/share/applications/brow6el.desktop \
-            --icon-file AppDir/usr/share/icons/hicolor/scalable/apps/brow6el.svg
+            --icon-file AppDir/usr/share/icons/hicolor/scalable/apps/brow6el.svg \
+            --exclude-library libGL.so.1  # Optional: Exclude if causing issues; CEF bundles graphics
+
+      - name: Verify AppImage structure (debug)
+        run: |
+          ./Brow6el-*.AppImage --appimage-extract
+          ls -la squasfs-root/
+          ls -la squasfs-root/* | head -10
 
       - name: Upload AppImage artifact
         uses: actions/upload-artifact@v4
