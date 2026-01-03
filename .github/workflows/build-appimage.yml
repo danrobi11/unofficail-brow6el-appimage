@@ -49,20 +49,22 @@ jobs:
 
       - name: Prepare minimal AppDir structure
         run: |
-          mkdir -p AppDir/usr
+          mkdir -p AppDir/usr/bin AppDir/usr/lib AppDir/usr/share  # Flexible structure
 
-          # Verify portable directory exists
-          if [ ! -d "build/portable" ]; then
-            echo "Error: build/portable directory not found"
-            ls -R build/
-            exit 1
-          fi
+          # Copy the launcher script
+          cp build/run_brow6el.sh AppDir/usr/bin/
 
-          # Copy the entire portable directory (contains executable, run script, CEF, libs, etc.)
-          cp -r build/portable/* AppDir/usr/
+          # Copy the main executable (assuming it is in build/)
+          cp build/brow6el AppDir/usr/bin/ || echo "Warning: brow6el executable not found in build/; may be named differently"
 
-          # Create AppRun (symlink to the run script inside the portable bundle)
-          ln -s usr/run_brow6el.sh AppDir/AppRun  # Adjust if the script name differs
+          # Copy bundled scripts, locales, and other resources (adjust patterns as needed based on full ls output)
+          cp -r build/scripts AppDir/usr/
+          cp -r build/locales AppDir/usr/
+          # Add additional directories if visible in debug ls (e.g., CEF resources, lib directories)
+          # Example: cp -r build/cef/* AppDir/usr/ if applicable
+
+          # Create AppRun symlink to the launcher script
+          ln -s usr/bin/run_brow6el.sh AppDir/AppRun
 
       - name: Bundle dependencies and create AppImage
         run: |
