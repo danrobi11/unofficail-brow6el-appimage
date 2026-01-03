@@ -19,7 +19,7 @@ jobs:
       - name: Checkout Brow6el source from Codeberg
         run: |
           git clone --depth 1 https://codeberg.org/janantos/brow6el.git .
-          git fetch --tags  # Optional: Fetch tags if needed for versioning
+          git fetch --tags  # Optional: Fetch tags if needed
 
       - name: Install build dependencies
         run: |
@@ -39,6 +39,9 @@ jobs:
       - name: Build portable version
         run: ./build_portable.sh
 
+      - name: Debug - List build directory contents
+        run: ls -R build/
+
       - name: Download linuxdeploy (continuous build)
         run: |
           wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
@@ -46,17 +49,20 @@ jobs:
 
       - name: Prepare minimal AppDir structure
         run: |
-          mkdir -p AppDir/usr/bin AppDir/usr/lib
+          mkdir -p AppDir/usr
 
-          # Copy executable and wrapper script
-          cp build/brow6el AppDir/usr/bin/
-          cp build/run_brow6el.sh AppDir/usr/bin/
+          # Verify portable directory exists
+          if [ ! -d "build/portable" ]; then
+            echo "Error: build/portable directory not found"
+            ls -R build/
+            exit 1
+          fi
 
-          # Copy the entire portable bundle (CEF binaries, libraries, resources)
+          # Copy the entire portable directory (contains executable, run script, CEF, libs, etc.)
           cp -r build/portable/* AppDir/usr/
 
-          # Create AppRun (symlink to the run script for proper argument passing and environment setup)
-          ln -s usr/bin/run_brow6el.sh AppDir/AppRun
+          # Create AppRun (symlink to the run script inside the portable bundle)
+          ln -s usr/run_brow6el.sh AppDir/AppRun  # Adjust if the script name differs
 
       - name: Bundle dependencies and create AppImage
         run: |
