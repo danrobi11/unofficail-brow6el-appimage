@@ -49,26 +49,38 @@ jobs:
 
       - name: Prepare minimal AppDir structure
         run: |
-          mkdir -p AppDir/usr/bin AppDir/usr/lib AppDir/usr/share  # Flexible structure
+          mkdir -p AppDir/usr/bin AppDir/usr/share/applications
 
           # Copy the launcher script
           cp build/run_brow6el.sh AppDir/usr/bin/
 
-          # Copy the main executable (assuming it is in build/)
-          cp build/brow6el AppDir/usr/bin/ || echo "Warning: brow6el executable not found in build/; may be named differently"
+          # Copy the main executable
+          cp build/brow6el AppDir/usr/bin/ || echo "Warning: brow6el executable not found"
 
-          # Copy bundled scripts, locales, and other resources (adjust patterns as needed based on full ls output)
+          # Copy bundled resources (scripts, locales, and others from debug output)
           cp -r build/scripts AppDir/usr/
           cp -r build/locales AppDir/usr/
-          # Add additional directories if visible in debug ls (e.g., CEF resources, lib directories)
-          # Example: cp -r build/cef/* AppDir/usr/ if applicable
+          # Extend with additional cp -r commands based on full debug ls output (e.g., CEF files)
 
-          # Create AppRun symlink to the launcher script
+          # Create minimal .desktop file (required by appimagetool; placeholder icon)
+          cat > AppDir/usr/share/applications/brow6el.desktop << EOF
+          [Desktop Entry]
+          Name=Brow6el
+          Comment=Minimalistic sixel-based web browser (terminal only)
+          Exec=run_brow6el.sh %U
+          Icon=application-default-icon  # Generic fallback; no custom icon needed
+          Type=Application
+          Categories=Network;WebBrowser;
+          Terminal=true  # Indicates terminal application
+          EOF
+
+          # Create AppRun symlink
           ln -s usr/bin/run_brow6el.sh AppDir/AppRun
 
       - name: Bundle dependencies and create AppImage
         run: |
-          ./linuxdeploy-x86_64.AppImage --appdir AppDir --output appimage
+          ./linuxdeploy-x86_64.AppImage --appdir AppDir --output appimage \
+            --desktop-file AppDir/usr/share/applications/brow6el.desktop
 
       - name: Upload AppImage artifact
         uses: actions/upload-artifact@v4
