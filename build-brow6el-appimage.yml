@@ -1,0 +1,99 @@
+name: Build Brow6el AppImage
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  release:
+    types: [ published ]
+  workflow_dispatch:  # Manual triggering
+
+jobs:
+  appimage:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # For release uploads
+
+    steps:
+      - name: Checkout Brow6el source from Codeberg
+        run: |
+          git clone --depth 1 https://codeberg.org/janantos/brow6el.git .
+          git fetch --tags  # Optional: Fetch tags if needed
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake git pkg-config curl \
+            libsixel-dev \
+            libx11-dev libxcomposite-dev libxdamage-dev libxext-dev libxfixes-dev \
+            libxrandr-dev libgbm-dev libxcb1-dev \
+            libpango1.0-dev libatk1.0-dev libcups2-dev libasound2-dev \
+            libnss3-dev libnspr4-dev libglib2.0-dev \
+            file
+      - name: Download CEF binary (x86_64)
+        run: ./download_cef.sh
+
+      - name: Build portable version
+        run: ./build_portable.sh
+
+      - name: Debug - List build directory contents
+        run: ls -la build/ && ls -R build/
+
+      - name: Download linuxdeploy (continuous build)
+        run: |
+          wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          chmod +x linuxdeploy-x86_64.AppImage
+      - name: Prepare minimal AppDir structure
+        run: |
+          mkdir -p AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/scalable/apps
+          # Copy entire portable build contents to usr/ (flat structure)
+          cp -r build/* AppDir/usr/
+          # Verify key files are present
+          if [ ! -f "AppDir/usr/run_brow6el.sh" ] || [ ! -f "AppDir/usr/brow6el" ]; then
+            echo "Error: Required files (run_brow6el.sh or brow6el) missing"
+            ls -la AppDir/usr/
+            exit 1
+          fi
+          # Minimal placeholder icon
+          cat > AppDir/usr/share/icons/hicolor/scalable/apps/brow6el.svg << 'EOF'
+          <svg width="256" height="256" xmlns="http://www.w3.org/2000/svg">
+            <rect width="256" height="256" fill="#ffffff"/>
+            <text x="128" y="128" font-size="60" text-anchor="middle" dominant-baseline="middle" fill="#000000">B</text>
+          </svg>
+          EOF
+          # Minimal .desktop file
+          cat > AppDir/usr/share/applications/brow6el.desktop << EOF
+          [Desktop Entry]
+          Name=Brow6el
+          Comment=Minimalistic sixel-based web browser (terminal only)
+          Exec=run_brow6el.sh %U
+          Icon=brow6el
+          Type=Application
+          Categories=Network;WebBrowser;
+          Terminal=true
+          EOF
+          # Custom AppRun wrapper to cd into the directory containing the launcher and executable
+          cat > AppDir/AppRun << 'EOF'
+          #!/bin/sh
+          HERE="$(dirname "$(readlink -f "${0}")")"
+          cd "$HERE/usr"
+          exec ./run_brow6el.sh "$@"
+          EOF
+          chmod +x AppDir/AppRun
+      - name: Bundle dependencies and create AppImage
+        run: |
+          ./linuxdeploy-x86_64.AppImage --appdir AppDir --output appimage \
+            --desktop-file AppDir/usr/share/applications/brow6el.desktop \
+            --icon-file AppDir/usr/share/icons/hicolor/scalable/apps/brow6el.svg
+      - name: Upload AppImage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Brow6el-x86_64.AppImage
+          path: Brow6el-*.AppImage
+
+      - name: Upload to GitHub Release (on release event)
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Brow6el-*.AppImage
